@@ -1,0 +1,6 @@
+nilearn
+matplotlib
+ipykernel
+bids
+numpy
+
