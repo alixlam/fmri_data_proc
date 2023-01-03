@@ -145,3 +145,6 @@ out/
 
 # data folder
 data/
+
+# tests
+test*
