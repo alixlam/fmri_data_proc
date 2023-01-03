@@ -1,4 +1,19 @@
 VENV_PREFIX=$(shell python -c "if __import__('pathlib').Path('.venv/bin/pip').exists(): print('.venv/bin/')")
+DATA_FOLDER="/users2/local/alix/XP2"
+IMAGE_DIR="/users/local/alix/singularity_images/fmriprep-22.0.2.simg"
+OUT_FOLDER="/users2/local/alix/out"
+WORK_FOLDER="/users2/local/alix/work"
+LICENSE_PATH="/homes/a19lamou/fmripreprocessing/.licenses/license.txt"
+
+.PHONY: run-singularity --DATA_FOLDER --WORK_FOLDER --OUT_FOLDER
+run-singularity: # Run singularity 
+	@echo "Running singularity on data in [$(DATA_FOLDER)]"
+	@singularity run -B /homes/a19lamou/fmripreprocessing:/fmripreprocessing -B $(DATA_FOLDER):/data -B $(WORK_FOLDER):/work -B $(OUT_FOLDER):/out $(IMAGE_DIR) /data /out participant --fs-license-file /fmripreprocessing/.licenses/license.txt --work-dir /work --force-no-bbr --fs-no-reconall --output-spaces MNI152NLin2009cAsym:res-2 anat func 
+
+.PHONY: generate-report --DATA_FOLDER
+generate-report:
+	@echo "Generating report"
+	@singularity run -B /homes/a19lamou/fmripreprocessing:/fmripreprocessing -B $(DATA_FOLDER):/data -B ${PWD}/out:/out $(IMAGE_DIR) /data /out participant --fs-license-file /fmripreprocessing/.licenses/license.txt --report
 
 .PHONY: run
 run: # Run code

@@ -148,3 +148,6 @@ data/
 
 # tests
 test*
+
+# licence files
+.licenses/
