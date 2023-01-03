@@ -1,6 +1,7 @@
 import nibabel as nib
 import numpy as np
-from nilearn.image import resample_to_img, binarize_img
+from nilearn.image import binarize_img, resample_to_img
+
 
 def combine_mask_files(mask_files, mask_method=None, mask_index=None):
     """Combines input mask files into a single nibabel image
@@ -33,9 +34,9 @@ def combine_mask_files(mask_files, mask_method=None, mask_index=None):
             mask = nib.load(mask_files[mask_index])
             return [mask]
         raise ValueError(
-            ("mask_index {0} must be less than number of mask " "files {1}").format(
-                mask_index, len(mask_files)
-            )
+            (
+                "mask_index {0} must be less than number of mask " "files {1}"
+            ).format(mask_index, len(mask_files))
         )
     masks = []
     if mask_method == "none":
@@ -64,6 +65,7 @@ def combine_mask_files(mask_files, mask_method=None, mask_index=None):
             np.logical_and(mask, img_as_mask, mask)
         img = nib.Nifti1Image(mask, img.affine, header=img.header)
         return [img]
+
 
 def resample_mask_to_bold(bold_img, mask, threshold=0.5):
     resampled_mask = resample_to_img(mask, bold_img)

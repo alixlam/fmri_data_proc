@@ -1,1 +1,1 @@
-from nilearn.plotting import plot_roi, plot_event
+from nilearn.plotting import plot_event, plot_roi
