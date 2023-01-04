@@ -54,7 +54,7 @@ def run_first_level(
 
     # Compute contrasts
     z_maps = {}
-    for contrast in ["Task", "Task - Rest"]:
+    for contrast in [f"{task_name}", f"{task_name} - Rest", "Rest"]:
         z_map = glm.compute_contrast(contrast)
         z_maps[contrast] = z_map
     return z_maps
