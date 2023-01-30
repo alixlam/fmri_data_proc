@@ -67,6 +67,6 @@ def combine_mask_files(mask_files, mask_method=None, mask_index=None):
         return [img]
 
 
-def resample_mask_to_bold(bold_img, mask, threshold=0.5):
-    resampled_mask = resample_to_img(mask, bold_img)
+def resample_mask_to_bold(bold_img, mask, threshold=0.5, interpolation="nearest"):
+    resampled_mask = resample_to_img(mask, bold_img, interpolation= "nearest")
     return binarize_img(resampled_mask, threshold=threshold)

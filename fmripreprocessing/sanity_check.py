@@ -40,7 +40,7 @@ def extract_task_events(imgs, events_file):
     """
     events = pd.read_table(events_file)
     task_events = events[events["trial_type"] != "Rest"]
-    if isinstance(imgs, "str"):
+    if isinstance(imgs, str):
         img = nib.load(imgs)
     else:
         img = imgs
