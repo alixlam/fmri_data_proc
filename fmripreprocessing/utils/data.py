@@ -5,6 +5,8 @@ from nilearn.masking import compute_epi_mask, intersect_masks
 
 from fmripreprocessing.utils.masks import resample_mask_to_bold
 
+from nilearn.datasets import load_mni152_gm_mask
+
 
 def get_subject_NF_run(
     path_to_data="/users2/local/alix/out2",
@@ -44,7 +46,9 @@ def get_subject_brain_mask_from_T1(
     )
     mask_fov = compute_epi_mask(bold_example)
     T1_bold = resample_mask_to_bold(bold_example, T1_brain_mask)
-    return intersect_masks([T1_bold, mask_fov], 1)
+    GM_mask_bold = resample_mask_to_bold(bold_example, load_mni152_gm_mask())
+
+    return intersect_masks([T1_bold, mask_fov, GM_mask_bold], 1)
 
 
 def get_subject_MI(

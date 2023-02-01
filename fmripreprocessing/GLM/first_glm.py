@@ -9,6 +9,7 @@ from nilearn.glm.first_level import (
 from nilearn.interfaces.fmriprep import load_confounds, load_confounds_strategy
 
 from fmripreprocessing.utils.data import *
+import nibabel as nib
 
 
 def run_first_level(
@@ -77,8 +78,7 @@ def run_first_level(
         design_matrix = make_first_level_design_matrix(
             frame_times,
             events,
-            drift_model="polynomial",
-            drift_order=3,
+            drift_model=None,
             hrf_model="glover",
             add_regs=conf,
             add_reg_names=reg_names,
@@ -106,9 +106,10 @@ def run_first_model_dataset(
     task_name="NF",
     regression="simple",
     space= "MNI152NLin2009cAsym_res-2",
+    output_path = "/homes/a19lamou/fmri_data_proc/data/glm",
     run_ids=[1, 2, 3],
 ):
-    contrast_maps = {}
+    contrasts_maps = {}
     for sub in subjects_to_include:
         functional_paths = get_subjects_functional_data(
             path_to_dataset, sub, task=task_name, run_ids=run_ids, space=space,
@@ -154,6 +155,12 @@ def run_first_model_dataset(
             motion=True,
             path_to_confounds=functional_paths,
         )
+        contrasts_maps.update({f"{sub}" : {}})
+        if not os.path.exists(output_path):
+            os.mkdir(output_path)
+        for cont_id, cont in contrast.items():
+            filename = os.path.join(output_path, f"{sub}_cont-{cont_id}_fist_level.nii.gz")
+            nib.save(cont, filename)
+            contrasts_maps[sub].update({cont_id : filename})
 
-        contrast_maps.update({f"{sub}": contrast})
-    return contrast_maps
+    return contrasts_maps
