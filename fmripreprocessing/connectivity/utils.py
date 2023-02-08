@@ -122,7 +122,7 @@ def run_seed_correlation_dataset(
         if regression is not None:
             clean_img = []
             confounds, _ = load_confounds_strategy(
-                functional_paths, regression, global_signal="basic"
+                functional_paths, regression, global_signal = 'basic', demean = False,
             )
             if not isinstance(confounds, list):
                 confounds = [confounds]

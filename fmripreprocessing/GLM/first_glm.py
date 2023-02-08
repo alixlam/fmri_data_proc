@@ -59,12 +59,12 @@ def run_first_level(
     # Build design matrix
     # corection since we do slice timing correction see
     # https://reproducibility.stanford.edu/slice-timing-correction-in-fmriprep-and-linear-modeling/
-    frame_times = np.arange(func_img[0].shape[-1] * TR) + TR / 2
+    frame_times = np.arange(func_img[0].shape[-1] * TR) + TR/2
     columns_name = ["onset", "duration", "trial_type"]
     events = events.drop(columns=[c for c in events if c not in columns_name])
     if motion:
         motion_confonds, _ = load_confounds(
-            path_to_confounds, strategy=["motion"], motion="basic"
+            path_to_confounds, strategy=["motion"], motion="basic", demean = False,
         )
         if not isinstance(motion_confonds, list):
             motion_confonds = [motion_confonds]
@@ -78,15 +78,15 @@ def run_first_level(
         design_matrix = make_first_level_design_matrix(
             frame_times,
             events,
-            drift_model=None,
-            hrf_model="glover",
+            drift_model='cosine',
+            hrf_model="spm",
             add_regs=conf,
             add_reg_names=reg_names,
         )
         design_matrices.append(design_matrix)
 
     # Instantiate the first level model
-    glm = FirstLevelModel(t_r=TR, mask_img=brain_mask, smoothing_fwhm=6)
+    glm = FirstLevelModel(t_r=TR, mask_img=brain_mask, smoothing_fwhm=6,signal_scaling = False,)
 
     # Fit the GLM
     glm.fit(func_img, design_matrices=design_matrices)
@@ -96,7 +96,7 @@ def run_first_level(
     for contrast in [f"{task_name}", f"{task_name} - Rest", "Rest"]:
         z_map = glm.compute_contrast(contrast, output_type=output_type)
         z_maps[contrast] = z_map
-    return z_maps, glm
+    return z_maps
 
 
 def run_first_model_dataset(
@@ -132,7 +132,7 @@ def run_first_model_dataset(
         if regression is not None:
             clean_img = []
             confounds, _ = load_confounds_strategy(
-                functional_paths, regression, global_signal="basic"
+                functional_paths, regression, global_signal='basic', demean = False,
             )
             if not isinstance(confounds, list):
                 confounds = [confounds]
@@ -146,12 +146,12 @@ def run_first_model_dataset(
             clean_img = functional_paths
 
         task_name_glm = "TaskNF" if "NF" in task_name else "TaskMI"
-        contrast, glm = run_first_level(
+        contrast = run_first_level(
             event_file=events,
             fmri_session=clean_img,
             brain_mask=brain_mask,
             task_name=task_name_glm,
-            output_type="stat",
+            output_type="effect_size",
             motion=True,
             path_to_confounds=functional_paths,
         )
