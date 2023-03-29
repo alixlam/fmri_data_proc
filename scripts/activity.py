@@ -1,40 +1,50 @@
-from fmripreprocessing.connectivity.utils import run_seed_correlation_dataset
-from nilearn.masking import intersect_masks
-import os 
-import pandas as pd
-from nilearn.glm.second_level import SecondLevelModel
-from fmripreprocessing.GLM.first_glm import run_first_model_dataset
-from scipy.stats import norm
+import os
+
 import matplotlib.pyplot as plt
+import nibabel as nib
+import pandas as pd
 from nilearn import plotting
+from nilearn.glm.second_level import SecondLevelModel, non_parametric_inference
+from nilearn.masking import intersect_masks
+from scipy.stats import norm
+
+from fmripreprocessing.GLM.first_glm import run_first_model_dataset
 from fmripreprocessing.GLM.second_glm import run_second_model
 
-
-
-subject_list = ['sub-xp201',
- 'sub-xp202',
- 'sub-xp203',
- 'sub-xp204',
- 'sub-xp205',
- 'sub-xp206',
- 'sub-xp207',
- 'sub-xp210',
- 'sub-xp211',
- 'sub-xp213',
- 'sub-xp216',
- 'sub-xp217',
- 'sub-xp218',
- 'sub-xp219',
- 'sub-xp220',
- 'sub-xp221',
- 'sub-xp222']
+subject_list = [
+    "sub-xp201",
+    "sub-xp202",
+    "sub-xp203",
+    "sub-xp204",
+    "sub-xp205",
+    "sub-xp206",
+    "sub-xp207",
+    "sub-xp210",
+    "sub-xp211",
+    "sub-xp213",
+    "sub-xp216",
+    "sub-xp217",
+    "sub-xp218",
+    "sub-xp219",
+    "sub-xp220",
+    "sub-xp221",
+    "sub-xp222",
+]
 
 HMAT_full = "/homes/a19lamou/fmri_data_proc/HMAT/HMAT.nii"
 
 
-results_activity = run_first_model_dataset(path_to_dataset = "/users2/local/alix/out", subjects_to_include= subject_list, regression = "simple",task_name="NF", run_ids = [1,2,3], space = "MNI152NLin2009cAsym_res-2", output_path="/homes/a19lamou/fmri_data_proc/data/glm_simple")
+results_activity = run_first_model_dataset(
+    path_to_dataset="/users2/local/alix/out",
+    subjects_to_include=subject_list,
+    regression="simple",
+    task_name="NF",
+    run_ids=[1, 2, 3],
+    space="MNI152NLin2009cAsym_res-2",
+    output_path="/homes/a19lamou/fmri_data_proc/data/glm_simple",
+)
 
-fig, axes = plt.subplots(nrows=5, ncols= 4, figsize=(25,25))
+"""fig, axes = plt.subplots(nrows=5, ncols= 4, figsize=(25,25))
 for cidx, (id, tmap) in enumerate(zip(subject_list, data2)):
     plotting.plot_glass_brain(
         tmap,
@@ -46,14 +56,13 @@ for cidx, (id, tmap) in enumerate(zip(subject_list, data2)):
         display_mode='z',
         black_bg=False
     ).add_contours(HMAT_full)
-fig.suptitle('Subjects t_maps NF - Rest')
+fig.suptitle('Subjects t_maps NF - Rest')"""
 
 data2 = [dat["TaskNF - Rest"] for i, dat in results_activity.items()]
-import os 
-data2 = [os.path.join(f"/homes/a19lamou/fmri_data_proc/data/glm/{sub}_cont-TaskNF - Rest_fist_level.nii.gz") for sub in subject_list]
+# data2 = [os.path.join(f"/homes/a19lamou/fmri_data_proc/data/glm/{sub}_cont-TaskNF - Rest_fist_level.nii.gz") for sub in subject_list]
 
-result2 = run_second_model(data2)
-
+# result2 = run_second_model(data2)
+"""
 display = plotting.plot_stat_map(
         result2[0],
         threshold=norm.isf(0.001),
@@ -108,10 +117,9 @@ display = plotting.plot_stat_map(
             display_mode="ortho",
             title="[TaskNF - Rest] Group maps (p < 0.05 FDR)",
         )
-display.add_contours(HMAT_full)
+display.add_contours(HMAT_full)"""
 
 # TFCE
-from nilearn.glm.second_level import non_parametric_inference
 design_matrix = pd.DataFrame([1] * len(data2), columns=["intercept"])
 out_dict = non_parametric_inference(
     data2,
@@ -122,10 +130,17 @@ out_dict = non_parametric_inference(
     smoothing_fwhm=6.0,
     n_jobs=5,
     threshold=0.001,
-    tfce = True , 
-    verbose = 1,
+    tfce=True,
+    verbose=1,
 )
 
+for name, map in out_dict.items():
+    nib.save(
+        map,
+        f"/homes/a19lamou/fmri_data_proc/data/second_level_glm/1/{name}.nii.gz",
+    )
+
+"""
 display = plotting.plot_glass_brain(
         out_dict["logp_max_tfce"],
         threshold=1.3,
@@ -135,6 +150,7 @@ display = plotting.plot_glass_brain(
         title="[TaskNF - Rest] Group maps (p < 0.05 TFCE FWE)",
     )
 display.add_contours(HMAT_full)
+display.save_fig("/homes/a19lamou/fmri_data_proc/data/second_level_glm/tfce.")
 
 display = plotting.plot_glass_brain(
         out_dict["logp_max_t"],
@@ -154,4 +170,4 @@ display = plotting.plot_glass_brain(
         plot_abs=False,
         title="[TaskNF - Rest] Group maps (p < 0.05 FWER bonferroni)",
     )
-display.add_contours(HMAT_full)
+display.add_contours(HMAT_full)"""

@@ -135,6 +135,7 @@ cython_debug/
 # data folders and temporary files
 /data
 /tmp
+temp*
 __*
 
 # Config file

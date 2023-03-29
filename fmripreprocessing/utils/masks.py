@@ -1,5 +1,6 @@
 import nibabel as nib
 import numpy as np
+from nilearn import plotting
 from nilearn.image import binarize_img, resample_to_img
 
 
@@ -67,6 +68,33 @@ def combine_mask_files(mask_files, mask_method=None, mask_index=None):
         return [img]
 
 
-def resample_mask_to_bold(bold_img, mask, threshold=0.5, interpolation="nearest"):
-    resampled_mask = resample_to_img(mask, bold_img, interpolation= "nearest")
+def resample_mask_to_bold(
+    bold_img, mask, threshold=0.5, interpolation="nearest"
+):
+    resampled_mask = resample_to_img(mask, bold_img, interpolation="nearest")
     return binarize_img(resampled_mask, threshold=threshold)
+
+
+def intersect_multilabel(fov_mask, labels_img, prob=False):
+    fov_mask_resampled = binarize_img(
+        resample_to_img(fov_mask, labels_img, "nearest"), 0.5
+    )
+
+    fov_mask_array = fov_mask_resampled.get_fdata()
+    if prob:
+        centroid_coordinates = plotting.find_probabilistic_atlas_cut_coords(
+            labels_img
+        )
+    else:
+        centroid_coordinates = plotting.find_parcellation_cut_coords(
+            labels_img
+        )
+
+    labels_img = nib.load(labels_img)
+    labels_img_array = labels_img.get_fdata()
+
+    labels_img_arr_cropped = labels_img_array
+    labels_img_arr_cropped[fov_mask_array == 0] = 0
+
+    final = nib.Nifti1Image(labels_img_arr_cropped, labels_img.affine)
+    return final

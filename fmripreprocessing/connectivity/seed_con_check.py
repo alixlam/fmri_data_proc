@@ -4,14 +4,13 @@ import nilearn.image as nim
 import numpy as np
 import pandas as pd
 from nilearn import plotting
+from nilearn.interfaces.fmriprep import load_confounds, load_confounds_strategy
 from nilearn.maskers import NiftiLabelsMasker, NiftiMasker, NiftiSpheresMasker
 from nilearn.plotting import plot_anat, plot_roi, plot_stat_map
 
 from fmripreprocessing.GLM.first_glm import run_first_level
 from fmripreprocessing.sanity_check import extract_task_events
-
 from fmripreprocessing.utils.data import *
-from nilearn.interfaces.fmriprep import load_confounds, load_confounds_strategy
 
 
 def extract_seed_roi(func_data, HMAT, brain_mask=None):
@@ -49,7 +48,6 @@ def compute_correlation(
     value="z-score",
     plot=True,
 ):
-
     assert value in [
         "z-score",
         "correlation",
@@ -96,18 +94,23 @@ def run_seed_correlation_dataset(
     task_name="NF",
     regression="simple",
     run_ids=[1],
-    space = "MNI152NLin2009Asym",
-    HMAT = None):
-
+    space="MNI152NLin2009Asym",
+    HMAT=None,
+):
     correlation_maps = {}
 
     for sub in subjects_to_include:
         functional_paths = get_subjects_functional_data(
-            path_to_dataset, sub, task=task_name, run_ids=run_ids, space = space,
+            path_to_dataset,
+            sub,
+            task=task_name,
+            run_ids=run_ids,
+            space=space,
         )
         if "MI" in task_name:
             events = get_event_file(
-                path_to_data=path_to_events, task_name=task_name + run_ids,
+                path_to_data=path_to_events,
+                task_name=task_name + run_ids,
             )
         elif "NF" in task_name:
             events = (
@@ -117,12 +120,17 @@ def run_seed_correlation_dataset(
                     path_to_data=path_to_events, task_name="2dNF"
                 )
             )
-        brain_mask = get_subject_brain_mask_from_T1(path_to_dataset, sub, space = space)
+        brain_mask = get_subject_brain_mask_from_T1(
+            path_to_dataset, sub, space=space
+        )
 
         if regression is not None:
             clean_img = []
             confounds, _ = load_confounds_strategy(
-                functional_paths, regression, global_signal = 'basic', demean = False,
+                functional_paths,
+                regression,
+                global_signal="basic",
+                demean=False,
             )
             if not isinstance(confounds, list):
                 confounds = [confounds]
@@ -136,7 +144,16 @@ def run_seed_correlation_dataset(
             clean_img = functional_paths
 
         print(clean_img)
-        correlations, correlation_map = compute_correlation(func_data = clean_img[0], HMAT=HMAT, brain_mask=brain_mask, event_file=events, task_name=task_name, TR=1, ROI=True, plot=False)
+        correlations, correlation_map = compute_correlation(
+            func_data=clean_img[0],
+            HMAT=HMAT,
+            brain_mask=brain_mask,
+            event_file=events,
+            task_name=task_name,
+            TR=1,
+            ROI=True,
+            plot=False,
+        )
 
         correlation_maps.update({f"{sub}": correlation_map})
     return correlation_maps, clean_img

@@ -9,7 +9,6 @@ from nilearn.glm.first_level import (
 from nilearn.interfaces.fmriprep import load_confounds, load_confounds_strategy
 
 from fmripreprocessing.utils.data import *
-import nibabel as nib
 
 
 def run_first_level(
@@ -59,12 +58,15 @@ def run_first_level(
     # Build design matrix
     # corection since we do slice timing correction see
     # https://reproducibility.stanford.edu/slice-timing-correction-in-fmriprep-and-linear-modeling/
-    frame_times = np.arange(func_img[0].shape[-1] * TR) + TR/2
+    frame_times = np.arange(func_img[0].shape[-1] * TR) + TR / 2
     columns_name = ["onset", "duration", "trial_type"]
     events = events.drop(columns=[c for c in events if c not in columns_name])
     if motion:
         motion_confonds, _ = load_confounds(
-            path_to_confounds, strategy=["motion"], motion="basic", demean = False,
+            path_to_confounds,
+            strategy=["motion"],
+            motion="basic",
+            demean=False,
         )
         if not isinstance(motion_confonds, list):
             motion_confonds = [motion_confonds]
@@ -78,7 +80,7 @@ def run_first_level(
         design_matrix = make_first_level_design_matrix(
             frame_times,
             events,
-            drift_model='cosine',
+            drift_model="cosine",
             hrf_model="spm",
             add_regs=conf,
             add_reg_names=reg_names,
@@ -86,7 +88,12 @@ def run_first_level(
         design_matrices.append(design_matrix)
 
     # Instantiate the first level model
-    glm = FirstLevelModel(t_r=TR, mask_img=brain_mask, smoothing_fwhm=6,signal_scaling = False,)
+    glm = FirstLevelModel(
+        t_r=TR,
+        mask_img=brain_mask,
+        smoothing_fwhm=6,
+        signal_scaling=False,
+    )
 
     # Fit the GLM
     glm.fit(func_img, design_matrices=design_matrices)
@@ -105,14 +112,18 @@ def run_first_model_dataset(
     subjects_to_include=["sub-xp201"],
     task_name="NF",
     regression="simple",
-    space= "MNI152NLin2009cAsym_res-2",
-    output_path = "/homes/a19lamou/fmri_data_proc/data/glm",
+    space="MNI152NLin2009cAsym_res-2",
+    output_path="/homes/a19lamou/fmri_data_proc/data/glm",
     run_ids=[1, 2, 3],
 ):
     contrasts_maps = {}
     for sub in subjects_to_include:
         functional_paths = get_subjects_functional_data(
-            path_to_dataset, sub, task=task_name, run_ids=run_ids, space=space,
+            path_to_dataset,
+            sub,
+            task=task_name,
+            run_ids=run_ids,
+            space=space,
         )
         print(functional_paths)
         if "MI" in task_name:
@@ -127,12 +138,17 @@ def run_first_model_dataset(
                     path_to_data=path_to_events, task_name="2dNF"
                 )
             )
-        brain_mask = get_subject_brain_mask_from_T1(path_to_dataset, sub, space = space)
+        brain_mask = get_subject_brain_mask_from_T1(
+            path_to_dataset, sub, space=space
+        )
 
         if regression is not None:
             clean_img = []
             confounds, _ = load_confounds_strategy(
-                functional_paths, regression, global_signal='basic', demean = False,
+                functional_paths,
+                regression,
+                global_signal="basic",
+                demean=False,
             )
             if not isinstance(confounds, list):
                 confounds = [confounds]
@@ -151,16 +167,18 @@ def run_first_model_dataset(
             fmri_session=clean_img,
             brain_mask=brain_mask,
             task_name=task_name_glm,
-            output_type="effect_size",
+            output_type="stat",
             motion=True,
             path_to_confounds=functional_paths,
         )
-        contrasts_maps.update({f"{sub}" : {}})
+        contrasts_maps.update({f"{sub}": {}})
         if not os.path.exists(output_path):
             os.mkdir(output_path)
         for cont_id, cont in contrast.items():
-            filename = os.path.join(output_path, f"{sub}_cont-{cont_id}_fist_level.nii.gz")
+            filename = os.path.join(
+                output_path, f"{sub}_cont-{cont_id}_fist_level.nii.gz"
+            )
             nib.save(cont, filename)
-            contrasts_maps[sub].update({cont_id : filename})
+            contrasts_maps[sub].update({cont_id: filename})
 
     return contrasts_maps

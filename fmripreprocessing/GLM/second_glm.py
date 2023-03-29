@@ -3,6 +3,7 @@ from nilearn import plotting
 from nilearn.glm.second_level import SecondLevelModel
 from scipy.stats import norm
 
+
 def run_second_model(data, plot=True, p_val_thresh=0.001):
     design_matrix = pd.DataFrame([1] * len(data), columns=["intercept"])
     second_level_glm = SecondLevelModel(smoothing_fwhm=6)
