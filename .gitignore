@@ -152,3 +152,6 @@ test*
 
 # licence files
 .licenses/
+
+# vscode
+.vscode/

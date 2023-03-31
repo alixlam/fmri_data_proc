@@ -6,21 +6,17 @@ from nilearn import plotting
 from nilearn.connectome import ConnectivityMeasure
 from nilearn.maskers import NiftiLabelsMasker, NiftiMapsMasker
 from tqdm import tqdm
-from nilearn.interfaces.bids import get_bids_files
 
-from fmripreprocessing.connectivity.confounds import load_confounds
 from fmripreprocessing.utils.data import *
 from fmripreprocessing.utils.masks import intersect_multilabel
 
+from fmripreprocessing.utils.confounds import *
 
-def get_fc_roi_single(
+def get_fc_roi(
     atlas,
     brain_mask,
     fmri,
     prob=True,
-    confounds=None,
-    task_regressor=None,
-    only_task=True,
     cropped_mask=True,
     separate_runs=True,
     run_ids=[1, 2, 3],
@@ -33,106 +29,113 @@ def get_fc_roi_single(
         mask_cropped = intersect_multilabel(brain_mask, atlas)
     if not prob:
         masker = NiftiLabelsMasker(
-            mask_cropped, mask_img=brain_mask, standardize=True, verbose=0
+            mask_cropped, mask_img=brain_mask, standardize=False, detrend= False, standardize_confounds = False, verbose=0
         )
 
     else:
         masker = NiftiMapsMasker(
-            atlas.maps, mask_img=brain_mask, standardize=True
+            atlas.maps, mask_img=brain_mask, standardize=False
         )
 
     # Time series
     time_series = []
-    for scan, conf in zip(fmri, confounds):
-        ts = masker.fit_transform(scan, confounds=conf)
+    for scan in fmri:
+        ts = masker.fit_transform(scan)
         time_series.append(ts)
 
     if not separate_runs:
         time_series = [np.concatenate(time_series, axis=0)]
-        task_regressor = [np.concatenate(task_regressor)]
         run_ids = ["".join(str(ids) for ids in run_ids)]
 
-    if only_task:
-        correlation_matrices = connectivity_measure.fit_transform(
-            [ts[tr >= 0] for ts, tr in zip(time_series, task_regressor)]
-        )
-    else:
-        correlation_matrices = connectivity_measure.fit_transform(time_series)
+    correlation_matrices = connectivity_measure.fit_transform(time_series)
 
     return {
         str(run_ids[i]): correlation_matrices[i] for i in range(len(run_ids))
     }
 
-
-def run_task_reg_correlation_single(
+def get_task_FC(
     path_to_dataset="/users2/local/alix/out2",
     path_to_events="/users2/local/alix/XP2",
     subjects_to_include=["sub-xp201"],
     task_name="NF",
-    regression="simple",
-    mask_img="/homes/a19lamou/fmri_data_proc/data/masks/global_mask.nii.gz",
+    denoise_strategy="simple",
+    brain_mask="/homes/a19lamou/fmri_data_proc/data/masks/global_mask.nii.gz",
     space="MNI152NLin2009cAsym_res-2",
     run_ids=[1, 2, 3],
-    atlas="/homes/a19lamou/fmri_data_proc/data/glasser",
-    prob=True,
+    ses_id=[None],
+    atlas="/homes/a19lamou/fmri_data_proc/data/masks/Schaefer2018_400Parcels_7Networks_order_FSLMNI152_2mm.nii.gz",
+    prob=False,
     task=True,
     reg_type="FIR",
+    firlag=None, 
     gs=None,
-    TR=1,
-    only_task=True,
+    TR=None,
+    task_block=True,
     cropped_mask=True,
     separate_runs=True,
     task_id_event_file='language',
+    xp2 = False,
+    verbose=True,
     **conn_args,
 ):
     FC = {}
     for sub in tqdm(subjects_to_include):
-        functional_paths = get_subjects_functional_data(
-            path_to_dataset,
-            sub,
-            task=task_name,
-            run_ids=run_ids,
-            space=space,
-        )
-        print(functional_paths)
-        if "MI" in task_name:
-            events = get_event_file(
-                path_to_data=path_to_events, task_name=task_name + run_ids
-            )
-        elif "NF" in task_name:
-            events = get_event_file(path_to_data=path_to_events, task_name="1dNF") if "1dNF" in functional_paths[0] else get_event_file(path_to_data=path_to_events, task_name="2dNF")
-        else: 
-            events = get_bids_files(path_to_events, sub_label=sub.split('-')[-1], modality_folder='func', file_tag='events', filters=[("run", "01")])[0]
-        brain_mask = mask_img
-        confs = []
-        tasks = []
-        for img in functional_paths:
-            confounds, task_regressor = load_confounds(
-                events,
-                img,
-                strategy=regression,
-                task=task,
-                reg_type=reg_type,
-                gs=gs,
-                TR=TR,
-                task_id=task_id_event_file,
-            )
-            confs.append(confounds)
-            tasks.append(task_regressor)
-        correlation_matrice = get_fc_roi_single(
-            atlas=atlas,
-            brain_mask=brain_mask,
-            fmri=functional_paths,
-            prob=prob,
-            confounds=confs,
-            task_regressor=tasks,
-            only_task=only_task,
-            cropped_mask=cropped_mask,
-            separate_runs=separate_runs,
-            run_ids=run_ids,
-            **conn_args,
-        )
+        if xp2 and "NF" in task_name:
+            table = pd.read_table(os.path.join(path_to_events, "participants.tsv"))
+            task_name = table[table["participant_id"] == sub]["feedback_type"].iloc[0]+"NF"
+        FCses = {}
+        for ses in ses_id:
+            denoised_functional_img = []
+            for run in run_ids:
+                functional_paths = get_subject_functional_data(
+                    path_to_dataset,
+                    sub,
+                    task_name=task_name,
+                    run_id=run,
+                    space=space,
+                    ses_id=ses,
+                )
+                if verbose:
+                    print(f"Loading : {functional_paths}")
 
-        FC.update({f"{sub}": correlation_matrice})
+                events = get_event_file(path_to_events=path_to_events, task_name=task_name, subject_id=sub)
+                if len(events) == 0:
+                    if verbose :
+                        print("No event found in subject folder, looking in dataset folder")
+                    events = get_event_file(path_to_events=path_to_events, task_name=task_name, subject_id="*", sub_folder=False)
+                if len(events) > 1:
+                    events = [ev for ev in events if f"run-{run}" in ev]
+                if verbose:
+                    print(f"loading events file : {events}")
+                
+                # Step 1 : Remove confounds:
+                cleaned_fmri = confound_regression(func_img=functional_paths[0], confound_strategy=denoise_strategy, gs=gs, mask_img=brain_mask)
+                #cleaned_fmri = functional_paths[0]
+                # Step 1 bis : remove task 
+                if task: 
+                    cleaned_fmri = task_regression(cleaned_fmri, events[0], regression_strategy=reg_type, firlag=firlag, task_id=task_id_event_file, mask_img=brain_mask)
+
+                # Step 2 : Extract time series
+                if task_block:
+                    task_function = get_task_function(events[0], TR=TR, task_id=task_id_event_file, ntime=cleaned_fmri.shape[-1])
+                    new_fmri_task_blocks_array = cleaned_fmri.get_data()[:,:,:, task_function > 0]
+                    cleaned_fmri_final = nib.Nifti1Image(new_fmri_task_blocks_array, affine=cleaned_fmri.affine)
+                else :
+                    cleaned_fmri_final = cleaned_fmri
+                denoised_functional_img.append(cleaned_fmri_final)
+            
+            connectivity_matrice = get_fc_roi(
+                atlas=atlas,
+                brain_mask=brain_mask,
+                fmri=denoised_functional_img,
+                prob=prob,
+                cropped_mask=cropped_mask,
+                separate_runs=separate_runs,
+                run_ids=run_ids,
+                **conn_args,
+            )
+            FCses.update({f"{ses}": connectivity_matrice})
+
+        FC.update({f"{sub}": FCses})
 
     return FC

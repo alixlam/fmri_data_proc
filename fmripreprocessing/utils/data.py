@@ -13,24 +13,30 @@ from fmripreprocessing.utils.masks import (
     resample_mask_to_bold,
 )
 
-
-def get_subject_NF_run(
-    path_to_data="/users2/local/alix/out2",
+def get_subject_functional_data(
+    path_to_data='/users2/local/alix/out',
     subject_id="sub-xp201",
-    run_ids=[1, 2, 3],
+    run_id = 1,
+    ses_id=None,
     space="MNI152NLin2009cAsym",
+    task_name="1dNF",
 ):
-    files = []
-    for id in run_ids:
-        files += glob.glob(
-            os.path.join(
-                path_to_data,
-                subject_id,
-                "func",
-                f"{subject_id}_task-*dNF_run-{id}_space-{space}_desc-preproc_bold.nii.gz",
-            )
-        )
-    return files
+    filters = []
+    if space is not None:
+        filters.append(("space", space))
+    if ses_id is not None:
+        filters.append(("ses", ses_id))
+    if task_name is not None:
+        filters.append(("task", task_name))
+    if run_id is not None:
+        filters.append(("run", str(run_id)))
+    subject_id = subject_id.split('-')[-1]
+    return get_bids_files(path_to_data, sub_label = subject_id, file_tag='bold', file_type='nii*', 
+                            modality_folder='func', filters=filters)
+
+def get_event_file(path_to_events="/users2/local/alix/XP2", task_name="1dNF", subject_id="*", sub_folder=True):
+    return get_bids_files(path_to_events, sub_label=subject_id.split("-")[-1], file_tag="events", filters=[("task", task_name)], sub_folder = sub_folder)
+    
 
 
 def get_subject_brain_mask_from_T1(
@@ -61,50 +67,7 @@ def get_subject_brain_mask_from_T1(
     return final
 
 
-def get_subject_MI(
-    path_to_data="/users2/local/alix/out2",
-    subject_id="sub-xp201",
-    run_ids="pre",
-    space="MNI152NLin2009cAsym",
-):
-    return [
-        os.path.join(
-            path_to_data,
-            subject_id,
-            "func",
-            f"{subject_id}_task-MI{run_ids}_space-{space}_desc-preproc_bold.nii.gz",
-        )
-    ]
-
-
-def get_subjects_functional_data(
-    path_to_data="/users2/local/alix/out2",
-    subject_id="sub-xp201",
-    space="MNI152NLin2009cAsym",
-    task="NF",
-    run_ids=[1, 2, 3],
-):
-    
-    if "NF" in task:
-        return get_subject_NF_run(path_to_data, subject_id, run_ids, space)
-    elif "MI" in task:
-        return get_subject_MI(path_to_data, subject_id, run_ids, space)
-    else:
-        filters = [] 
-        if space is not None:
-            filters.append(("space", space))
-        
-        return get_bids_files(path_to_data, file_tag='bold', file_type='nii*',
-                                    sub_label=subject_id.split('-')[-1],
-                                    modality_folder='func', filters=filters)
-            
-
-
-def get_event_file(path_to_data="/users2/local/alix/XP2", task_name="1dNF"):
-    return os.path.join(path_to_data, f"task-{task_name}_events.tsv")
-
-
-def fetch_difumo_fov(
+"""def fetch_difumo_fov(
     fov_mask="/homes/a19lamou/fmri_data_proc/data/masks/global_mask.nii.gz",
     dimension=64,
 ):
@@ -130,3 +93,4 @@ def fetch_difumo_fov(
     labels_left = atlas.labels[indices_in_fov]
     labels_left["component"]
     return {"maps": final_atlas_fov, "labels": labels_left}
+"""
