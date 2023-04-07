@@ -5,154 +5,93 @@ sys.path.append("../")
 
 
 import numpy as np
-import scipy.stats as stats
-import tqdm
-from statsmodels.api import OLS
-from statsmodels.stats.multitest import fdrcorrection
+from fmripreprocessing.connectivity.statistics import apply_ttest_correlation
 
 from fmripreprocessing.configs.config_combined import CONFIG
-from fmripreprocessing.utils.masks import intersect_multilabel
-from fmripreprocessing.utils.visualization import *
+import argparse
 
 
 # scheafer = '/homes/a19lamou/fmri_data_proc/data/masks/Schaefer2018_400Parcels_7Networks_order_FSLMNI152_2mm.nii.gz'
 # labels = np.array(np.unique(intersect_multilabel("/homes/a19lamou/fmri_data_proc/data/masks/global_mask.nii.gz", scheafer).get_fdata()), dtype=int)
 
+BASEDIR = "/homes/a19lamou/fmri_data_proc/data/connectivity/unthresh_combined/XP2"
+BASEDIROUT = "/homes/a19lamou/fmri_data_proc/data/connectivity/FDR_cor_combined/XP2"
 
-def apply_ttest(y, X, con):
-    t_test = OLS(y, X).fit().t_test(con)
-    return float(t_test.tvalue), float(t_test.pvalue)
+parser = argparse.ArgumentParser(
+    description='Compute connectivity matrices for selected subjects and config'
+)
 
+parser.add_argument('-i', '--indir', default=BASEDIR)
 
-def fdr(pvals, tvals):
-    return fdrcorrection(pvals, alpha=0.05)[0] * tvals
+parser.add_argument('-o', '--out', default=BASEDIROUT)
 
+parser.add_argument('-s', '--ses', default="None")
 
-def make_sym_matrix(n, vals):
-    m = np.zeros([n, n], dtype=np.double)
-    xs, ys = np.tril_indices(n, k=-1)
-    m[xs, ys] = vals
-    m[ys, xs] = vals
-    m[np.diag_indices(n)] = 0
-    return m
+parser.add_argument('-r', '--run', default='123')
 
-
-"""for config in CONFIG:
-    atlas_name = os.path.basename(config["atlas"])[:3]
-    regression = "taskReg" if config["task"]==True else "NOtaskReg"
-    strategy = config["regression"]
-    ts = "task_block" if config["only_task"]==True else "all"
-    measure = "cor" if config["kind"] == "correlation" else "pcorr"
-    global_signal = None if atlas_name == "Sch" else None
-    reg_type = "hrf" if config["reg_type"] != "FIR" else "FIR"
+parser.add_argument('-ti', '--test_id', default="default", choices=["default", "taskReg"])
+args = parser.parse_args()
 
 
-    print(
-        "#"*20
-    )
-    print(f"Running config: \nAtlas : {atlas_name}\nregression : {regression}\nts : {ts}\nmeasure : {measure}")
-    if regression == "NOtaskReg":
-        continue
-    if atlas_name == "Sch" or atlas_name == "HMA":
-        cor = np.load(f"/homes/a19lamou/fmri_data_proc/data/connectivity/unthresh_combined/{measure}_{atlas_name}_run_{123}_{regression}_{reg_type}_{ts}_{global_signal}_{strategy}.npy")
-        #cor = np.concatenate([np.load(f"/homes/a19lamou/fmri_data_proc/data/connectivity/unthresh/{measure}_{atlas_name}_run_{i}_{regression}_{ts}_{global_signal}.npy") for i in range(1,4)], axis = 0)
-        cor_tvals = np.zeros(cor.shape[1:3])
-        cor_pvals = np.zeros(cor.shape[1:3])
-        pval_count = 0
-        pval_vector = np.ones(int(np.sum(np.tri(cor.shape[1], cor.shape[2], -1))))
-        for row in tqdm.tqdm(range(cor.shape[1])):
-            for col in range(cor.shape[2]):
-                if row > col:
-                    result = stats.ttest_1samp(np.arctanh(cor)[:, row,col], popmean = 0)
-                    cor_tvals[row,col] = result.statistic
-                    cor_pvals[row, col] = result.pvalue
-                    cor_tvals[col,row] = result.statistic
-                    cor_pvals[col, row] = result.pvalue
-                    pval_vector[pval_count] = result.pvalue
-                    pval_count += 1
+if args.test_id == "default":
+    for config in CONFIG:
+        atlas_name = os.path.basename(config["atlas"])[:3]
+        regression = "taskReg" if config["task"]==True else "NOtaskReg"
+        strategy = config["denoise_strategy"]
+        ts = "task_block" if config["task_block"]==True else "all"
+        measure = "cor" if config["kind"] == "correlation" else "pcorr"
+        global_signal = None if atlas_name == "Sch" else None
+        reg_type = "hrf" if config["reg_type"] != "FIR" else "FIR"
 
 
-        fdr_corrected = fdrcorrection(pval_vector)[0]
-        fdr_corrected = make_sym_matrix(cor.shape[1], fdr_corrected)
+        print(
+            "#"*20
+        )
+        print(f"Running config: \nAtlas : {atlas_name}\nregression : {regression}\nts : {ts}\nmeasure : {measure}")
+        filename =f"conn_ses-{args.ses}_run-{args.run}_measure-{measure}_ts-{ts}_space-{atlas_name}_densoise-{strategy}_{global_signal}.npy"
+        if regression == "taskReg":
+            final_path_in = os.path.join(args.indir, regression, reg_type, filename)
+        else :
+            final_path_in = os.path.join(args.indir, regression, filename)
+        cor = np.load(final_path_in)
+        corrected_vals = apply_ttest_correlation(X=cor, correction="FDR", alpha=0.05, return_uncorrected=False)
+        if regression == "taskReg":
+            final_path_out = os.path.join(args.out, regression, reg_type, filename)
+        else :
+            final_path_out = os.path.join(args.out, regression, filename)
+        
+        if os.path.isdir(os.path.dirname(final_path_out)) == False:
+                os.makedirs(os.path.dirname(final_path_out))
+        np.save(final_path_out, corrected_vals)
 
-        corrected_vals = np.ma.masked_array(np.tanh(np.mean(np.arctanh(cor), axis = 0)), mask = np.ones(fdr_corrected.shape) - fdr_corrected)
-        test = np.tanh(np.mean(np.arctanh(cor), axis = 0))
-        test[fdr_corrected == 0] = 0
-        np.save(f"/homes/a19lamou/fmri_data_proc/data/connectivity/FDR_cor/{measure}_{atlas_name}_run_{123}_{regression}_{reg_type}_{ts}_{global_signal}_{strategy}.npy", test)"""
+elif args.test_id == "taskReg":
+    ATLAS = ["Sch"]
+    CON_MEASURE = ["cor"]
+    TS = ["task_block"]
+    TASKREG = ["FIR"]
+    STRAT = "None"
+    GS = "basic"
 
-
-ATLAS = ["Sch"]
-CON_MEASURE = ["cor"]
-TASK_REG = ["taskReg", "NOtaskReg"]
-TS = ["task_block", "all"]
-
-STRAT = "compcor"
-GS = "None"
-
-for atlas in ATLAS:
-    for measure in CON_MEASURE:
-        for ts in TS:
-            print("#" * 20)
-            print(
-                f"Running config: \nAtlas : {atlas}\nreg : {ts}\nmeasure : {measure}"
-            )
-
-            corTaskReg = np.load(
-                f"/homes/a19lamou/fmri_data_proc/data/connectivity/unthresh_combined_ext/{measure}_{atlas}_run_{123}_taskReg_FIR_{ts}_{GS}_{STRAT}.npy"
-            )
-            corNOTaskReg = np.load(
-                f"/homes/a19lamou/fmri_data_proc/data/connectivity/unthresh_combined_ext/{measure}_{atlas}_run_{123}_NOtaskReg_FIR_{ts}_{GS}_{STRAT}.npy"
-            )
-            cor_tvals = np.zeros(corTaskReg.shape[1:3])
-            cor_pvals = np.zeros(corTaskReg.shape[1:3])
-            pval_count = 0
-            pval_vector = np.ones(
-                int(
-                    np.sum(
-                        np.tri(corTaskReg.shape[1], corTaskReg.shape[2], -1)
+    for atlas_name in ATLAS:
+        for measure in CON_MEASURE:
+            for ts in TS:
+                for taskreg in TASKREG:
+                    print("#" * 20)
+                    print(
+                        f"Running config: \nAtlas : {atlas_name}\nreg : {ts}\nmeasure : {measure}"
                     )
-                )
-            )
-            for row in tqdm.tqdm(range(corTaskReg.shape[1])):
-                for col in range(corTaskReg.shape[2]):
-                    if row > col:
-                        result = stats.ttest_rel(
-                            np.arctanh(corNOTaskReg)[:, row, col],
-                            np.arctanh(corTaskReg)[:, row, col],
-                        )
-                        cor_tvals[row, col] = result.statistic
-                        cor_pvals[row, col] = result.pvalue
-                        cor_tvals[col, row] = result.statistic
-                        cor_pvals[col, row] = result.pvalue
-                        pval_vector[pval_count] = result.pvalue
-                        pval_count += 1
-
-            fdr_corrected = fdrcorrection(pval_vector)[0]
-            fdr_corrected = make_sym_matrix(corTaskReg.shape[1], fdr_corrected)
-
-            corrected_vals = np.ma.masked_array(
-                np.tanh(
-                    np.mean(
-                        np.arctanh(corNOTaskReg) - np.arctanh(corTaskReg),
-                        axis=0,
-                    )
-                ),
-                mask=np.ones(fdr_corrected.shape) - fdr_corrected,
-            )
-            test = np.tanh(
-                np.mean(
-                    np.arctanh(corNOTaskReg) - np.arctanh(corTaskReg), axis=0
-                )
-            )
-            np.save(
-                f"/homes/a19lamou/fmri_data_proc/data/connectivity/FDR_cor_ext/NOtaskReg-taskReg_FIR_{measure}_{atlas}_run_{123}_{ts}_{STRAT}_{GS}_uncor.npy",
-                test,
-            )
-            test[fdr_corrected == 0] = 0
-            np.save(
-                f"/homes/a19lamou/fmri_data_proc/data/connectivity/FDR_cor_ext/NOtaskReg-taskReg_FIR_{measure}_{atlas}_run_{123}_{ts}_{STRAT}_{GS}.npy",
-                test,
-            )
+                    filename = f"conn_ses-{args.ses}_run-{args.run}_measure-{measure}_ts-{ts}_space-{atlas_name}_densoise-{STRAT}_{GS}.npy"
+                    TaskReg_filename = os.path.join(args.indir, "taskReg", taskreg, filename)
+                    NOTaskReg_filename = os.path.join(args.indir, "NOtaskReg", filename)
+                    corTaskReg = np.load(TaskReg_filename)
+                    corNOTaskReg = np.load(NOTaskReg_filename)
+                    corrected_vals = apply_ttest_correlation(X=corNOTaskReg, X2=corTaskReg, alpha=0.05)
+                    outpath = os.path.join(args.out, "NOtaskReg-TaskReg", filename)
+                    if os.path.isdir(os.path.dirname(outpath)) == False:
+                        os.makedirs(os.path.dirname(outpath))
+                    np.save(
+                        outpath,
+                        corrected_vals,)
 
 
 """for config in CONFIG:

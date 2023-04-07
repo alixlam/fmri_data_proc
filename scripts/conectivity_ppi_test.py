@@ -4,7 +4,7 @@ import sys
 import numpy as np
 
 from fmripreprocessing.configs.config_ppi import CONFIG
-from fmripreprocessing.connectivity.PPI_clean import run_ppi
+from fmri_data_proc.fmripreprocessing.connectivity.PPI import run_ppi
 
 sys.path.append("../")
 

@@ -7,7 +7,7 @@ import argparse
 
 import numpy as np
 
-from fmripreprocessing.configs.config_combined import CONFIG
+from fmripreprocessing.configs.config_nilearn_language import CONFIG
 from fmripreprocessing.connectivity.correlation import (
     get_task_FC,
 )
@@ -20,10 +20,12 @@ parser = argparse.ArgumentParser(
     description='Compute connectivity matrices for selected subjects and config'
 )
 
-parser.add_argument('-out', '--o', default=BASEDIR)
+parser.add_argument('-o', '--out', default=BASEDIR)
+
+args = parser.parse_args()
 
 
-for config in CONFIG:
+for config in CONFIG[:2]:
     atlas_name = os.path.basename(config["atlas"])[:3]
     strategy = config["denoise_strategy"]
     regression = "taskReg" if config["task"] else "NOtaskReg"
@@ -46,9 +48,9 @@ for config in CONFIG:
         for run in run_ids:
             filename =f"conn_ses-{ses}_run-{run}_measure-{measure}_ts-{ts}_space-{atlas_name}_densoise-{strategy}_{global_signal}.npy"
             if regression == "taskReg":
-                final_path = os.path.join(BASEDIR, regression, reg_type, filename)
+                final_path = os.path.join(args.out, regression, reg_type, filename)
             else :
-                final_path = os.path.join(BASEDIR, regression, filename)
+                final_path = os.path.join(args.out, regression, filename)
             if os.path.isdir(os.path.dirname(final_path)) == False:
                 os.makedirs(os.path.dirname(final_path))
             mat = np.array([corr[str(ses)][run] for _, corr in results.items()])

@@ -15,7 +15,6 @@ def plot_glasser_cor_mat(
     symmetric=True,
     title="Scheaffer",
 ):
-    np.fill(correlation_mat, 0)
     if symmetric:
         v = np.max(np.abs(correlation_mat))
         vmin, vmax = -v, v

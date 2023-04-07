@@ -1,146 +1,151 @@
-import argparse
-import warnings
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
-from bids.layout import parse_file_entities
-from nilearn.glm.first_level import make_first_level_design_matrix
-from nilearn.input_data import NiftiLabelsMasker
+from nilearn.input_data import NiftiLabelsMasker, NiftiMapsMasker
 from sklearn.linear_model import LinearRegression
+from tqdm import tqdm
 
-warnings.filterwarnings("ignore")
+from fmripreprocessing.connectivity.confounds import (
+    get_task_function,
+    load_confounds,
+)
+from fmripreprocessing.utils.data import *
+from fmripreprocessing.utils.masks import intersect_multilabel
 
 
-class Data:
-    def __init__(self, fmriprep, strategy):
-        print("\nindexing files... ", end="")
-        self.fmriprep = fmriprep
-        self.preprocs = self.get_preprocs()
-        self.events = self.get_events()
-        self.confounds = self.get_confounds(strategy)
-        assert len(self.preprocs) == len(
-            self.confounds
-        ), "missings fmriprep files"
-        print(f"found {len(self.preprocs)} images")
+class PPI:
+    def __init__(self, tr=1) -> None:
+        self.tr = 1
+        self.results = None
+        self.task_regressor = None
 
-    def get_preprocs(self):
-        preprocs = self.fmriprep.glob(
-            "**/sub-*_task-h*_space-MNI152NLin6Asym_res-2_desc-preproc_bold.nii.gz"
-        )
-        return sorted([str(preproc) for preproc in preprocs])
+    def fit_transform(self, time_series, events=None, dm=None):
+        ppi_coefficients = []
 
-    def get_events(self):
-        events = sorted(
-            self.fmriprep.parents[1].glob("rawdata/**/sub-*_task-h*events.tsv")
-        )
-        return [
-            pd.read_csv(
-                event, sep="\t", usecols=["onset", "duration", "trial_type"]
+        if events is not None:
+            frame_times = np.arange(len(time_series) * self.tr) + self.tr / 2
+            task = get_task_function(events=events, frame_times=frame_times)
+            dm = pd.DataFrame(
+                {"Task": task, "constant": np.ones(len(frame_times))}
             )
-            for event in events
-        ]
 
-    def get_confounds(self, strategy):
-        return Confounds(**strategy).load(self.preprocs)
+        for roi in time_series.T:
+            dm["roi"] = roi
+            psy = dm.iloc[:, 0]
+            psy = psy - np.mean([psy.min(), psy.max()])
+            dm["ppi"] = psy * dm["roi"]
+            model = LinearRegression(fit_intercept=False, n_jobs=-2)
+            model.fit(dm, time_series)
+            ppi_coefficients.append(model.coef_[:, -1])
+        return np.vstack(ppi_coefficients)
 
-
-def get_linear_model():
-    return LinearRegression(fit_intercept=False, n_jobs=-2)
-
-
-def build_path(derivatives, sub, task, strategy, atlas):
-    path = derivatives / f"wb-ppi/sub-{sub}"
-    path.mkdir(parents=True, exist_ok=True)
-    # BIDS pattern:
-    # sub-{subject}_task-{task}_atlas-{atlas}_strat-{strategy}_{suffix}.{extension}
-    return (
-        path / f"sub-{sub}_task-{task}_atlas-{atlas}_strat-{strategy}_ppi.npy"
-    )
-
-
-def save_df(path, atlas):
-    atlas.df.to_csv(f"{path}/atlas-{atlas.title}_labels.csv", index=False)
-
-
-def save_fig(path, atlas):
-    atlas.fig.savefig(f"{path}/atlas-{atlas.title}_fig.png", dpi=300)
-
-
-def save_record(path, args):
-    file = path / "record.csv"
-    try:
-        record = pd.read_csv(file)
-    except BaseException:
-        record = pd.DataFrame({"atlas": [], "strategy": [], "smooth_fwhm": []})
-    record.loc[len(record)] = [args.atlas, args.strategy, args.smooth_fwhm]
-    record.to_csv(file, index=False)
-
-
-def get_dm(event, frame_times):
-    return make_first_level_design_matrix(
-        frame_times=frame_times,
-        events=event,
-        hrf_model="glover + derivative",
-        drift_model=None,
-        high_pass=None,
-    )
-
-
-def fit_ppi(ts_rois, dm, model):
-    ppi_vect = []
-
-    for roi in ts_rois.T:
-        dm["roi"] = roi  # is mean centered
-        psy = dm.iloc[:, 0]
-        psy = psy - np.mean([psy.min(), psy.max()])  # zero center
-        dm["ppi"] = psy * dm["roi"]
-        model.fit(dm, ts_rois)  # y = all rois, X = dm
-        ppi_vect.append(
-            model.coef_[:, -1]
-        )  # beta coefficients corresponding to ppi regressor
-
-    return np.hstack(ppi_vect)
-
-
-def main():
-    args = get_args()
-    derivatives = args.fmriprep.parent
-    data = Data(args.fmriprep, strategies[args.strategy])
-    atlas = atlases.Atlas(args.atlas)
-    masker = atlas.get_masker(
-        atlas.maps, atlas.probabilistic, derivatives, args.smooth_fwhm
-    )
-    model = get_linear_model()
-
-    for preproc, event, confound in zip(
-        data.preprocs, data.events, data.confounds
-    ):
-        file_entities = parse_file_entities(preproc)
-        sub, task = file_entities["subject"], file_entities["task"]
-        print(f"> sub-{sub} task-{task}")
-
-        path_ppi = build_path(
-            derivatives, sub, task, args.strategy, atlas.title
+def get_ppi_single(
+    atlas,
+    brain_mask,
+    fmri,
+    prob=False,
+    confounds=None,
+    cropped_mask=True,
+    events=None,
+    tr=1,
+    separate_runs=True,
+    run_ids=[1, 2, 3],
+):
+    ppi = PPI(tr=tr)
+    if cropped_mask:
+        mask_cropped = atlas
+    else:
+        mask_cropped = intersect_multilabel(brain_mask, atlas)
+    if not prob:
+        masker = NiftiLabelsMasker(
+            mask_cropped, mask_img=brain_mask, standardize=True, verbose=0
         )
+    else:
+        masker = NiftiMapsMasker(
+            atlas.maps, mask_img=brain_mask, standardize=True
+        )
+    time_series = []
+    for scan, conf in zip(fmri, confounds):
+        ts = masker.fit_transform(scan, confounds=conf)
+        time_series.append(ts)
 
-        ts_rois = masker.fit_transform(imgs=preproc, confounds=confound)
-        samples = len(ts_rois)
+    if not separate_runs:
+        time_series = [np.concatenate(time_series, axis=0)]
+        run_ids = ["".join(str(ids) for ids in run_ids)]
 
-        frame_times = np.linspace(0, (samples * args.tr) - args.tr, samples)
+    runs = {}
+    for i, ts in enumerate(time_series):
+        if not separate_runs:
+            frame_times = np.arange(len(ts) * tr) + tr / 2
+            task = get_task_function(events=events, frame_times=frame_times)
+            task_all_ts = [task for _ in range(len(run_ids))]
+            task_final = np.concatenate(task_all_ts)
+            dm = pd.DataFrame(
+                {"Task": task_final, "constant": np.ones(len(task_final))}
+            )
+            ppi_conectivity = ppi.fit_transform(ts, dm=dm)
+        else:
+            ppi_conectivity = ppi.fit_transform(ts, dm=dm)
+        runs.update({str(run_ids[i]): ppi_conectivity})
 
-        dm = get_dm(event, frame_times)
+    return runs
 
-        ppi_vect = fit_ppi(ts_rois, dm, model)
-        np.save(path_ppi, ppi_vect)
+def run_ppi(
+    path_to_dataset="/users2/local/alix/out",
+    path_to_events="/users2/local/alix/XP2",
+    subjects_to_include=["sub-xp201"],
+    task_name="NF",
+    regression="simple",
+    mask_img="/homes/a19lamou/fmri_data_proc/data/masks/global_mask.nii.gz",
+    space="MNI152NLin2009cAsym_res-2",
+    output_path="/homes/a19lamou/fmri_data_proc/data/correlation",
+    run_ids=[1, 2, 3],
+    atlas="/homes/a19lamou/fmri_data_proc/data/glasser",
+    prob=False,
+    task=False,
+    gs=None,
+    TR=1,
+    cropped_mask=True,
+    separate_runs=True,
+):
+    FC = {}
+    for sub in tqdm(subjects_to_include):
+        functional_paths = get_subjects_functional_data(
+            path_to_dataset,
+            sub,
+            task=task_name,
+            run_ids=run_ids,
+            space=space,
+        )
+        if "MI" in task_name:
+            events = get_event_file(
+                path_to_data=path_to_events, task_name=task_name + run_ids
+            )
+        elif "NF" in task_name:
+            events = (
+                get_event_file(path_to_data=path_to_events, task_name="1dNF")
+                if "1dNF" in functional_paths[0]
+                else get_event_file(
+                    path_to_data=path_to_events, task_name="2dNF"
+                )
+            )
+        brain_mask = mask_img
+        confs = []
+        for img in functional_paths:
+            confounds, __ = load_confounds(
+                events, img, strategy=regression, task=task, gs=gs, TR=TR
+            )
+            confs.append(confounds)
+        ppi = get_ppi_single(
+            atlas=atlas,
+            brain_mask=brain_mask,
+            fmri=functional_paths,
+            prob=prob,
+            confounds=confs,
+            cropped_mask=cropped_mask,
+            events=events,
+            separate_runs=separate_runs,
+            run_ids=run_ids,
+        )
+        FC.update({f"{sub}": ppi})
 
-    path = derivatives / f"wb-ppi/group/atlas-{atlas.title}"
-    path.mkdir(parents=True, exist_ok=True)
-
-    save_df(path, atlas)
-    save_fig(path, atlas)
-    save_record(path.parent, args)
-
-
-if __name__ == "__main__":
-    main()
+    return FC

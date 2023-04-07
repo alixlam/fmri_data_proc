@@ -13,7 +13,18 @@ run-singularity: # Run singularity
 .PHONY: run-singularity-avc --DATA_FOLDER --WORK_FOLDER --OUT_FOLDER
 run-singularity-avc: # Run singularity 
 	@echo "Running singularity on data in [$(DATA_FOLDER)]"
-	@singularity run -B /users2/local/alix/out/sub-xp202/anat:/out_anat -B /homes/a19lamou/fmripreprocessing:/fmripreprocessing -B $(DATA_FOLDER):/data -B $(WORK_FOLDER):/work -B $(OUT_FOLDER):/out $(IMAGE_DIR) /data /out participant --fs-license-file /fmripreprocessing/.licenses/license.txt --work-dir /work --output-spaces MNI152NLin2009cAsym anat --anat-derivatives /out_anat --bold2t1w-dof 12 --write-graph --force-no-bbr --fs-no-reconall --bids-filter-file /fmripreprocessing/bids_filter.json   
+	@singularity run -B /users2/local/alix/out/sub-xp202/anat:/out_anat \
+		-B /homes/a19lamou/fmripreprocessing:/fmripreprocessing \
+		-B $(DATA_FOLDER):/data \
+		-B $(WORK_FOLDER):/work \
+		-B $(OUT_FOLDER):/out $(IMAGE_DIR) /data /out participant \
+		--fs-license-file /fmripreprocessing/.licenses/license.txt \
+		--work-dir /work --participant-label 015 \
+		--output-spaces MNI152NLin2009cAsym anat \
+		--anat-derivatives /out_anat \
+		--bold2t1w-dof 12 --write-graph \
+		--force-no-bbr --fs-no-reconall 
+# --bids-filter-file /fmripreprocessing/bids_filter.json   
 
 
 .PHONY: generate-report --DATA_FOLDER --OUT_FOLDER

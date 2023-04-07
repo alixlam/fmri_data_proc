@@ -74,6 +74,18 @@ def resample_mask_to_bold(
     resampled_mask = resample_to_img(mask, bold_img, interpolation="nearest")
     return binarize_img(resampled_mask, threshold=threshold)
 
+def resample_lesion_mask_to_T1(
+    T1, Flair, lesion_mask, save_mask= True,
+):
+    affine = nib.load(Flair).affine
+    lesion_mask_array = nib.load(lesion_mask).get_fdata()
+    lesion_mask_affine = nib.Nifti1Image(lesion_mask_array, affine)
+    lesion_mask_resampled = resample_to_img(lesion_mask_affine, T1, interpolation='nearest')
+    if save_mask:
+        nib.save(lesion_mask_resampled, lesion_mask)
+        return lesion_mask_resampled
+    else :
+        return lesion_mask_resampled
 
 def intersect_multilabel(fov_mask, labels_img, prob=False):
     fov_mask_resampled = binarize_img(

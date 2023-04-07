@@ -3,6 +3,7 @@ from nilearn.interfaces.fmriprep import load_confounds_strategy
 from nilearn.glm.first_level.design_matrix import _convolve_regressors
 import pandas as pd
 import numpy as np
+import os, glob
 import warnings
 
 def confound_regression(func_img, confound_strategy = None, gs=None, confounds= None, mask_img=None, **cleanargs):
@@ -10,9 +11,16 @@ def confound_regression(func_img, confound_strategy = None, gs=None, confounds= 
     # Load confounds
     if confounds is not None:
         pass
-    else: 
-        confounds, _ = load_confounds_strategy(func_img, denoise_strategy=confound_strategy, global_signal=gs)
-    
+    else:
+        if confound_strategy is not None:
+            confounds, _ = load_confounds_strategy(func_img, denoise_strategy=confound_strategy, global_signal=gs)
+        else:
+            confounds_compcor = pd.DataFrame(nim.high_variance_confounds(func_img))
+            confounds_mouv_file = glob.glob(os.path.join(os.path.dirname(func_img), "*regressors*"))
+            if len(confounds_mouv_file) > 0:
+                confounds = pd.concat([confounds_compcor, pd.read_table(confounds_mouv_file[0])], axis=1)
+            else:
+                confounds = confounds_compcor
     #clean_img
     denoised_fmri = nim.clean_img(
         func_img, confounds=confounds, mask_img = mask_img, **cleanargs
