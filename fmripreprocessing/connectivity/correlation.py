@@ -20,6 +20,7 @@ def get_fc_roi(
     cropped_mask=True,
     separate_runs=True,
     run_ids=[1, 2, 3],
+    return_masker = False,
     **conn_args,
 ):
     connectivity_measure = ConnectivityMeasure(**conn_args)
@@ -48,10 +49,45 @@ def get_fc_roi(
         run_ids = ["".join(str(ids) for ids in run_ids)]
 
     correlation_matrices = connectivity_measure.fit_transform(time_series)
-
-    return {
+    if return_masker:
+        return {
+            str(run_ids[i]): correlation_matrices[i] for i in range(len(run_ids))
+        }, masker
+    else:
+        return {
         str(run_ids[i]): correlation_matrices[i] for i in range(len(run_ids))
     }
+def get_fc_homotopic(
+    atlas,
+    brain_mask,
+    fmri,
+    atlas_labels,
+    atlas_labels_name,
+    cropped_mask = True,
+    run_ids= [1,2,3],
+    **conn_args,
+
+):
+    
+    corr_mat, masker = get_fc_roi(atlas = atlas, brain_mask = brain_mask, fmri = fmri, cropped_mask = cropped_mask, prob=False, run_ids = run_ids, separate_runs = True, return_masker=True,    **conn_args,
+)
+    LH_labels = [lab for lab in atlas_labels_name if '_LH_' in lab]
+    RH_labels = [lab for lab in atlas_labels_name if '_RH_' in lab]
+    LH_labels = [label for label in LH_labels if label.replace('LH', 'RH') in RH_labels]
+    print(masker.n_elements_)
+
+    homotopic_FC_maps = {}
+    for run, cor in corr_mat.items():
+        homotopic_FC = np.zeros(nib.load(atlas).shape)
+        for region in LH_labels:
+            i = atlas_labels_name.index(region)
+            j = atlas_labels_name.index(region.replace("LH", "RH"))
+            homotopic_FC[np.where(nib.load(atlas).get_fdata() == atlas_labels[i])] = cor[i,j]
+            homotopic_FC[np.where(nib.load(atlas).get_fdata() == atlas_labels[j])] = cor[i,j]
+        homotopic_map = nib.Nifti1Image(homotopic_FC, affine = nib.load(atlas).affine)
+        homotopic_FC_maps.update({str(run): homotopic_map})   
+    return homotopic_FC_maps 
+
 
 def get_task_FC(
     path_to_dataset="/users2/local/alix/out2",
@@ -60,7 +96,7 @@ def get_task_FC(
     task_name="NF",
     denoise_strategy="simple",
     brain_mask="/homes/a19lamou/fmri_data_proc/data/masks/global_mask.nii.gz",
-    space="MNI152NLin2009cAsym_res-2",
+    space="MNI152NLin2009cAsym",
     run_ids=[1, 2, 3],
     ses_id=[None],
     atlas="/homes/a19lamou/fmri_data_proc/data/masks/Schaefer2018_400Parcels_7Networks_order_FSLMNI152_2mm.nii.gz",
@@ -110,7 +146,7 @@ def get_task_FC(
                 
                 # Step 1 : Remove confounds:
                 cleaned_fmri = confound_regression(func_img=functional_paths[0], confound_strategy=denoise_strategy, gs=gs, mask_img=brain_mask)
-                #cleaned_fmri = functional_paths[0]
+
                 # Step 1 bis : remove task 
                 if task: 
                     cleaned_fmri = task_regression(cleaned_fmri, events[0], regression_strategy=reg_type, firlag=firlag, task_id=task_id_event_file, mask_img=brain_mask)
@@ -135,6 +171,64 @@ def get_task_FC(
                 **conn_args,
             )
             FCses.update({f"{ses}": connectivity_matrice})
+
+        FC.update({f"{sub}": FCses})
+
+    return FC
+
+def get_homotopic_FC_subject(
+    path_to_dataset="/users2/local/alix/out2",
+    subjects_to_include=["sub-xp201"],
+    task_name="NF",
+    denoise_strategy="simple",
+    brain_mask="/homes/a19lamou/fmri_data_proc/data/masks/global_mask.nii.gz",
+    space="MNI152NLin2009cAsym_res-2",
+    run_ids=[1, 2, 3],
+    ses_id=[None],
+    atlas="/homes/a19lamou/fmri_data_proc/data/masks/Schaefer2018_400Parcels_7Networks_order_FSLMNI152_2mm.nii.gz",
+    atlas_labels_name = None,
+    atlas_labels=None,
+    gs=None,
+    TR=None,    
+    cropped_mask=True,
+    verbose=True,
+    **conn_args,
+):
+    FC = {}
+    for sub in tqdm(subjects_to_include):
+        FCses = {}
+        for ses in ses_id:
+            denoised_functional_img = []
+            for run in run_ids:
+                functional_paths = get_subject_functional_data(
+                    path_to_dataset,
+                    sub,
+                    task_name=task_name,
+                    run_id=run,
+                    space=space,
+                    ses_id=ses,
+                )
+                if verbose:
+                    print(f"Loading : {functional_paths}")
+                
+                # Step 1 : Remove confounds:
+                if verbose:
+                    print("Running temporal denoising ...")
+                cleaned_fmri = confound_regression(func_img=functional_paths[0], confound_strategy=denoise_strategy, gs=gs, mask_img=brain_mask)
+                
+                denoised_functional_img.append(cleaned_fmri)
+            
+            homotopic_FC = get_fc_homotopic(
+                atlas=atlas,
+                brain_mask=brain_mask,
+                fmri=denoised_functional_img,
+                atlas_labels=atlas_labels,
+                atlas_labels_name=atlas_labels_name,
+                cropped_mask=cropped_mask,
+                run_ids=run_ids,
+                **conn_args,
+            )
+            FCses.update({f"{ses}": homotopic_FC})
 
         FC.update({f"{sub}": FCses})
 

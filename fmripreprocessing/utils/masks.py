@@ -2,6 +2,8 @@ import nibabel as nib
 import numpy as np
 from nilearn import plotting
 from nilearn.image import binarize_img, resample_to_img
+from fmripreprocessing.utils.lesion_masks import *
+import os, glob
 
 
 def combine_mask_files(mask_files, mask_method=None, mask_index=None):

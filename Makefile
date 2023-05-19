@@ -1,31 +1,49 @@
 VENV_PREFIX=$(shell python -c "if __import__('pathlib').Path('.venv/bin/pip').exists(): print('.venv/bin/')")
 DATA_FOLDER="/users2/local/alix/XP2"
-IMAGE_DIR="/users2/local/alix/singularity_images/fmriprep-23.0.0.simg"
-OUT_FOLDER="/users2/local/alix/out"
+IMAGE_DIR="/homes/a19lamou/singularity_images/fmriprep-23.0.0.simg"
+OUT_FOLDER="/users2/local/alix/NF_AVC_derivatives"
 WORK_FOLDER="/users2/local/alix/work"
 LICENSE_PATH="/homes/a19lamou/fmripreprocessing/.licenses/license.txt"
 
-.PHONY: run-singularity --DATA_FOLDER --WORK_FOLDER --OUT_FOLDER
-run-singularity: # Run singularity 
+.PHONY: run-singularity-surface --DATA_FOLDER --WORK_FOLDER --OUT_FOLDER
+run-singularity-surface: # Run singularity 
 	@echo "Running singularity on data in [$(DATA_FOLDER)]"
-	@singularity run -B /homes/a19lamou/fmripreprocessing:/fmripreprocessing -B $(DATA_FOLDER):/data -B $(WORK_FOLDER):/work -B $(OUT_FOLDER):/out $(IMAGE_DIR) /data /out participant --fs-license-file /fmripreprocessing/.licenses/license.txt --work-dir /work --output-spaces MNI152NLin6Asym MNI152NLin2009cAsym anat func --bold2t1w-dof 12 --write-graph --bold2t1w-init header 
+	@singularity run -B /homes/a19lamou/fmripreprocessing:/fmripreprocessing \
+	-B $(DATA_FOLDER):/data \
+	-B $(WORK_FOLDER):/work \
+	-B $(OUT_FOLDER):/out $(IMAGE_DIR) /data /out participant \
+	--fs-license-file /fmripreprocessing/.licenses/license.txt \
+	--work-dir /work --output-spaces MNI152NLin6Asym MNI152NLin2009cAsym anat func \
+	--bold2t1w-dof 12 \
+	--write-graph \
+	--bold2t1w-init header
+	@echo "Deleting work folder  [$(DATA_FOLDER)]"
+	@rm -r $(WORK_FOLDER)/*
 
 .PHONY: run-singularity-avc --DATA_FOLDER --WORK_FOLDER --OUT_FOLDER
 run-singularity-avc: # Run singularity 
 	@echo "Running singularity on data in [$(DATA_FOLDER)]"
-	@singularity run -B /users2/local/alix/out/sub-xp202/anat:/out_anat \
+	@singularity run -B /users2/local/alix/NF_AVC_derivatives:/out_anat \
 		-B /homes/a19lamou/fmripreprocessing:/fmripreprocessing \
 		-B $(DATA_FOLDER):/data \
 		-B $(WORK_FOLDER):/work \
 		-B $(OUT_FOLDER):/out $(IMAGE_DIR) /data /out participant \
 		--fs-license-file /fmripreprocessing/.licenses/license.txt \
-		--work-dir /work --participant-label 015 \
-		--output-spaces MNI152NLin2009cAsym anat \
+		--work-dir /work\
+		--output-spaces MNI152NLin2009cAsym anat fsaverage5 \
 		--anat-derivatives /out_anat \
-		--bold2t1w-dof 12 --write-graph \
-		--force-no-bbr --fs-no-reconall 
-# --bids-filter-file /fmripreprocessing/bids_filter.json   
+		--bold2t1w-dof 12 --force-no-bbr --cifti-output
+	@echo "Deleting work folder  [$(DATA_FOLDER)]"
+	@rm -r $(WORK_FOLDER)/*
+# --force-no-bbr --fs-no-reconall
 
+.PHONY: clean-after-fmriprep --DATA_FOLDER --WORK_FOLDER --OUT_FOLDER
+clean-after-fmriprep: # Run singularity 
+	@echo "Deleting work folder  [$(WORK_FOLDER)]"
+	@rm -r $(WORK_FOLDER)/*
+	@echo "Syncing output to sl-mee-br-103  [$(OUT_FOLDER)]"
+	@rsync -r $(OUT_FOLDER)/ a19lamou@sl-mee-br-103.imta.fr:$(OUT_FOLDER) -D
+	
 
 .PHONY: generate-report --DATA_FOLDER --OUT_FOLDER
 generate-report:

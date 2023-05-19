@@ -1,0 +1,80 @@
+[environment]
+cpu_count = 16
+exec_env = "singularity"
+free_mem = 25.3
+overcommit_policy = "heuristic"
+overcommit_limit = "50%"
+nipype_version = "1.8.5"
+templateflow_version = "23.0.0"
+version = "23.0.0"
+
+[execution]
+bids_dir = "/data"
+bids_database_dir = "/homes/a19lamou/fmri_data_proc/work/20230511-203731_3ff862d8-1cb7-484d-8dd1-a98efbd2b160/bids_db"
+boilerplate_only = false
+sloppy = false
+debug = []
+fmriprep_dir = "/out"
+fs_license_file = "/fmripreprocessing/.licenses/license.txt"
+fs_subjects_dir = "/out/sourcedata/freesurfer"
+layout = "BIDS Layout: .../data | Subjects: 10 | Sessions: 69 | Runs: 30"
+log_dir = "/out/logs"
+log_level = 25
+low_mem = false
+md_only_boilerplate = false
+notrack = false
+track_carbon = false
+country_code = "CAN"
+output_dir = "/out"
+me_output_echos = false
+output_layout = "bids"
+output_spaces = "MNI152NLin2009cAsym:res-native"
+reports_only = true
+run_uuid = "20230511-203731_3ff862d8-1cb7-484d-8dd1-a98efbd2b160"
+participant_label = [ "002",]
+templateflow_home = "/homes/a19lamou/.cache/templateflow"
+work_dir = "/homes/a19lamou/fmri_data_proc/work"
+write_graph = false
+
+[workflow]
+anat_only = false
+aroma_err_on_warn = false
+aroma_melodic_dim = -200
+bold2t1w_dof = 6
+bold2t1w_init = "register"
+cifti_output = false
+fmap_bspline = false
+force_syn = false
+hires = true
+ignore = []
+longitudinal = false
+medial_surface_nan = false
+project_goodvoxels = false
+regressors_all_comps = false
+regressors_dvars_th = 1.5
+regressors_fd_th = 0.5
+run_reconall = true
+skull_strip_fixed_seed = false
+skull_strip_template = "OASIS30ANTs"
+skull_strip_t1w = "force"
+slice_time_ref = 0.5
+use_aroma = false
+use_syn_sdc = false
+
+[nipype]
+crashfile_format = "txt"
+get_linked_libs = false
+nprocs = 16
+omp_nthreads = 8
+plugin = "MultiProc"
+resource_monitor = false
+stop_on_first_crash = false
+
+[seeds]
+master = 8183
+ants = 20674
+numpy = 13953
+
+[nipype.plugin_args]
+maxtasksperchild = 1
+raise_insufficient = false
