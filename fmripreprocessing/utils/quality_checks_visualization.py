@@ -19,6 +19,7 @@ from fmripreprocessing.utils.masks import resample_mask_to_bold
 import matplotlib.pyplot as plt
 from svgutils.transform import fromstring
 from fmripreprocessing.utils.reports import HEMO_TEMPLATE
+from fmripreprocessing.utils.data import fetch_sub_fsaverage
 
 
 def get_lagmaps(subjects_id, pathdata_derivatives, space='MNI152NLin2009cAsym', spatial_filt=2, TR = 1, saving_path=None):
@@ -29,20 +30,19 @@ def get_lagmaps(subjects_id, pathdata_derivatives, space='MNI152NLin2009cAsym', 
             os.makedirs(saving_path)
         path_lesion, path_GM, path_fov, path_to_bold, path_to_confounds = get_lagmaps_inputs(subject, pathdata_derivatives, space)
         # Run rapidtide to get lagmaps
-        #if not os.path.isfile(os.path.join(saving_path, f"{subject}_desc-maxtime_map.nii.gz")):
-        """p = subprocess.run(['rapidtide', str(path_to_bold), 
-                            os.path.join(saving_path, subject),
-                            '--datatstep', str(TR),
-                            '--corrmask', path_GM,
-                            '--globalmeaninclude', path_GM,
-                            '--globalmeanexclude', path_lesion,
-                            '--filterband', 'None',
-                            '--spatialfilt', str(spatial_filt),
-                            '--searchrange', '-10', '10',
-                            '--motionfile', path_to_confounds,
-                            '--noglm',
-                            '--motderiv', '--motpos'])
-        """
+        if not os.path.isfile(os.path.join(saving_path, f"{subject}_desc-maxtime_map.nii.gz")):
+            p = subprocess.run(['rapidtide', str(path_to_bold), 
+                                os.path.join(saving_path, subject),
+                                '--datatstep', str(TR),
+                                '--corrmask', path_GM,
+                                '--globalmeaninclude', path_GM,
+                                '--globalmeanexclude', path_lesion,
+                                '--filterband', 'None',
+                                '--spatialfilt', str(spatial_filt),
+                                '--searchrange', '-10', '10',
+                                '--motionfile', path_to_confounds,
+                                '--noglm',
+                                '--motderiv', '--motpos'])
         # Mask lagmap
         lagmap = os.path.join(saving_path, f"{subject}_desc-maxtime_map.nii.gz")
         
@@ -56,13 +56,26 @@ def get_lagmaps(subjects_id, pathdata_derivatives, space='MNI152NLin2009cAsym', 
         
         #save report
         corrmap = os.path.join(os.path.join(pathdata_derivatives, subject, "lagmaps", f"{subject}_desc-maxcorr_map.nii.gz"))
+        
+        # Mask hemisphere
+        lh_mask = resample_mask_to_bold(path_to_bold, f"/homes/a19lamou/fmri_data_proc/data/masks/lh_space-{space}_mask.nii.gz").get_fdata()
+        lh_masked = np.ma.array(masked_map, mask=1 - lh_mask, fill_value=np.nan).filled()
+        rh_mask = resample_mask_to_bold(path_to_bold, f"/homes/a19lamou/fmri_data_proc/data/masks/rh_space-{space}_mask.nii.gz").get_fdata()
+        rh_masked = np.ma.array(masked_map, mask=1 - rh_mask, fill_value=np.nan).filled()
+        
+        
         mean_lag = round(np.nanmean(np.abs(masked_map)), 2)
+        rh_mean_lag = round(np.nanmean(np.abs(rh_masked)), 2)
+        lh_mean_lag = round(np.nanmean(np.abs(lh_masked)), 2)
+
         corrmap_array = nib.load(corrmap).get_fdata()
         mean_corr = round(np.mean(corrmap_array[corrmap_array > 0]), 2)
         prop_excluded = round(1 - (np.sum(nib.load(os.path.join(saving_path, f"{subject}_desc-corrfit_mask.nii.gz")).get_fdata())/np.sum(nib.load(path_GM).get_fdata())), 2)
         summary = HEMO_TEMPLATE.format(mean_lag = mean_lag, mean_maxcorr = mean_corr,
-                                       prop_voxel = prop_excluded * 100,
-                                       num_voxels = np.sum(mask_fitcorr))
+                                        lh_mean_lag = lh_mean_lag,
+                                        rh_mean_lag=rh_mean_lag,
+                                        prop_voxel = prop_excluded * 100,
+                                        num_voxels = np.sum(mask_fitcorr))
         
         with open(os.path.join(os.path.join(pathdata_derivatives, subject, "figures"), f"{subject}_desc-summary_hemo.html"), "w") as outfile:
             outfile.write(summary)
@@ -195,29 +208,76 @@ def get_surface_homotopic(pathdata_derivatives, subjects_ids = None):
                 hC = np.zeros((times_series_lh.shape[0]))
                 for i in range(hC.shape[0]):
                     hC[i] = corr_map[0, i, i + hC.shape[0]]
-                outpath = os.path.join(pathdata_derivatives, sub, "homotopic", os.path.basename(run).replace("hemi-L_space-fsaverage5_bold.func", "lh.HC"))
-                if not os.path.isdir(os.path.dirname(outpath)):
-                    os.makedirs(os.path.dirname(outpath))
-                nib.freesurfer.io.write_morph_data(file_like= outpath, values=hC)
+                outpath_lh = os.path.join(pathdata_derivatives, sub, "homotopic", os.path.basename(run).replace("hemi-L_space-fsaverage5_bold.func.gii", "lh.HC"))
+                outpath_rh = os.path.join(pathdata_derivatives, sub, "homotopic", os.path.basename(run).replace("hemi-L_space-fsaverage5_bold.func.gii", "rh.HC"))
+                
+                if not os.path.isdir(os.path.dirname(outpath_lh)):
+                    os.makedirs(os.path.dirname(outpath_lh))
+                nib.freesurfer.io.write_morph_data(file_like= outpath_lh, values=hC)
+                nib.freesurfer.io.write_morph_data(file_like= outpath_rh, values=hC)
     return 0
 
-def plot_atlas_on_surface(surface, labels, div_id, mode=None, compress="auto", label=None):
+def get_volume_homotopic(pathdata_derivatives, subjects_id = None):
+    for sub in tqdm.tqdm(subjects_id):
+        pial_surf = os.path.join(pathdata_derivatives, "sourcedata", "freesurfer", sub, "surf", "lh.pial")
+        ribbon = os.path.join(pathdata_derivatives, "sourcedata", "freesurfer", sub, "mri", "ribbon.mgz")
+
+        ses = glob.glob(os.path.join(pathdata_derivatives, sub, "ses-*"))
+        for s in ses:
+            runs = glob.glob(os.path.join(s, "homotopic",  "*lh.HC"))
+            for run in runs:
+                pathout = os.path.join(pathdata_derivatives, sub, "homotopic",  os.path.basename(run).replace("lh.HC", "lh_HC.nii.gz"))
+                if os.path.isfile(pathout):
+                    pass
+                # step 1 : transform in subjects native space
+                p1 = subprocess.run(['mri_surf2surf', 
+                                '--srcsubject', 'fsaverage5',
+                                '--trgsubject', sub,
+                                '--hemi', 'lh',
+                                '--srcsurfval', run,
+                                '--trgsurfval', run.replace("lh.HC", "lh_fsnative.HC"),
+                                '--trg_type', 'curv'])
+                
+                # step 2 : transform to volume
+                p2 = subprocess.run(['mri_surf2vol',
+                                '--o', pathout,
+                                '--so', pial_surf, run.replace("lh.HC", "lh_fsnative.HC"),
+                                '--ribbon', ribbon])
+                
+    return 0
+
+def plot_atlas_on_surface(surface, labels, div_id,mode=None, compress="auto", label=None, pathdata_fsaverage= None):
     out_files = []
     display, axes = plt.subplots(nrows=2, ncols=4, subplot_kw={'projection': '3d'})
-    for k, inf in enumerate(["pial", "infl"]):
+    surface_av, labels_av = fetch_sub_fsaverage(pathdata_fsaverage, 'fsaverage5')
+    for k, (surf, lab) in enumerate(zip([surface, surface_av], [labels, labels_av])):
         for i, hemi in enumerate(["left", "right"]):
             for j, view in enumerate(["lateral", "medial"]):
+                if i == 0 and k == 0 and j == 0:
+                    title= "Subject"
+                elif i==0 and k ==1 and j == 0 :
+                    title= "Template"
+                else :
+                    title = None
+                ax = axes[j,i+ k*(k + 1)]
+                ax.set_facecolor('black')
+                if title is not None:
+                    ax.set_title(title, fontdict={'color': 'white'})
                 plotting.plot_surf_roi(
-                    surface[f"{inf}_{hemi}"],
-                    roi_map = labels[f"atlas_{hemi}"],
+                    surf[f"pial_{hemi}"],
+                    roi_map = lab[f"atlas_{hemi}"],
+                    bg_map= surf[f"sulc_{hemi}"],
                     hemi = hemi,
                     view= view,
-                    axes= axes[j,i+ k*(k + 1)],
+                    axes= ax,
                     figure=display,
-                    engine='matplotlib'
-                )
-        display.suptitle(label)
+                    title=title,
+                    bg_on_data=True,
+                    engine='matplotlib',
+                    )
+        display.set_facecolor('black')
         svg = extract_svg(display, compress=compress, nilearn=False)
+        
         plt.close(display)
 
         # Find and replace the figure_1 id.
@@ -226,21 +286,17 @@ def plot_atlas_on_surface(surface, labels, div_id, mode=None, compress="auto", l
     return out_files
 
 def save_surface_plots(pathdata_derivatives, subjects_ids=None):
-    from fmripreprocessing.utils.data import fetch_sub_fsaverage
     if subjects_ids == None:
         subjects_ids = glob.glob(os.path.join(pathdata_derivatives, "sub-*"))
         subjects_ids = [os.path.basename(sub) for sub in subjects_ids if "html" not in sub]
     
-    surface_fsaverage, atlas_fsaverage = fetch_sub_fsaverage(pathdata_derivatives, 'fsaverage5')
-    surface_fsaverage_plot = plot_atlas_on_surface(surface_fsaverage, atlas_fsaverage, div_id="surface", label="fsaverage")
-    outpathfs = os.path.join(pathdata_derivatives,sub, "figures", f"{sub}_desc-surfaceatlas_fsaverage5.svg")
-    compose_view(surface_fsaverage_plot, [], out_file = outpathfs)
     for sub in subjects_ids:
         outpath = os.path.join(pathdata_derivatives,sub, "figures", f"{sub}_desc-surfaceatlas_T1w.svg")
-        if os.path.isdir(outpath):
-            pass
+        #if os.path.isdir(outpath):
+        #    pass
         surface_sub, atlas_sub = fetch_sub_fsaverage(pathdata_derivatives, sub)
-        surface_sub_plot = plot_atlas_on_surface(surface_sub, atlas_sub, div_id="surface", label="subject")
+        surface_sub_plot = plot_atlas_on_surface(surface_sub, atlas_sub, div_id="surface", label="Parcellation", pathdata_fsaverage=pathdata_derivatives)
+        #surface_sub_plot.savefig(outpath)
         compose_view(surface_sub_plot, [], out_file = outpath)
 
     return True

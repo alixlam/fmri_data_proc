@@ -43,7 +43,15 @@ clean-after-fmriprep: # Run singularity
 	@rm -r $(WORK_FOLDER)/*
 	@echo "Syncing output to sl-mee-br-103  [$(OUT_FOLDER)]"
 	@rsync -r $(OUT_FOLDER)/ a19lamou@sl-mee-br-103.imta.fr:$(OUT_FOLDER) -D
-	
+
+.PHONY: prepare-freesurfer
+prepare-freesurfer: # Prepare freesurfer env
+	@echo "preparing freesurfer environment variables"
+	@export FREESURFER_HOME=/opt/freesurfer/freesurfer
+	@source $(FREESURFER_HOME)/SetUpFreeSurfer.sh
+	@SUBJECTS_DIR=/mnt/srv-002/NF_AVC_derivatives/sourcedata/freesurfer/
+
+
 
 .PHONY: generate-report --DATA_FOLDER --OUT_FOLDER
 generate-report:

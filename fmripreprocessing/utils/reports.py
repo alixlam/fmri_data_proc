@@ -29,11 +29,18 @@ from niworkflows.reports.core import Report as _Report
 # updated niworkflows.
 
 HEMO_TEMPLATE = """\
-\t<ul class="elem-desc">
-\t\t<li>Mean Lag: {mean_lag}</li>
-\t\t<li>Mean corr: {mean_maxcorr}</li>
-\t\t<li>Proportion of voxels excluded: {prop_voxel}% ({num_voxels})</li>
-\t</ul>
+\t\t<details open>
+\t\t<summary>Summary</summary>
+\t\t<ul class="elem-desc">
+\t\t\t<li>Mean Lag: {mean_lag}</li>
+\t\t\t\t<ul class="elem-desc">
+\t\t\t\t<li>lh: {lh_mean_lag}</li>
+\t\t\t\t<li>rh: {rh_mean_lag}</li>
+\t\t\t\t</ul>
+\t\t\t<li>Mean corr: {mean_maxcorr}</li>
+\t\t\t<li>Proportion of voxels excluded: {prop_voxel}% ({num_voxels})</li>
+\t\t</ul>
+\t\t</details>
 """
 
 class Report(_Report):
